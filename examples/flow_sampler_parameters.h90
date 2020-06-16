@@ -1,0 +1,66 @@
+  ! Program parameters -> problem definition
+  character(len=16) :: expt='test6' ! Name of the experiment
+  integer :: mcmc_maxiter=5000 ! maximum number of iteration in MCMC chain
+  integer :: convergence_check=100 ! Number of iterations between convergence checks
+  integer :: m = 100 ! ensemble size
+  integer :: mup = 1 ! updated ensemble size
+  integer :: ktini = 1 ! first time step
+  integer :: ktend = 1 ! last time step
+  integer :: nlongitude=360 , nlatitude=181  ! grid size
+  real(kind=8) :: longitude_min = 0.
+  real(kind=8) :: longitude_max = 360.
+  real(kind=8) :: latitude_min = -90.
+  real(kind=8) :: latitude_max = 90.
+  real(kind=8) :: dt = 1. ! time step
+
+  integer :: lmax=30 ! max degree of the spherical harmonics
+  integer :: plegres=10 ! resolution required for Legendre polynomials
+
+  ! Characterisctics of the proposal distribution
+  real(kind=8) :: lm=0.  ! scale of power spectrum maximum
+  real(kind=8) :: lc=1.  ! power spectrum characteristic scale
+  real(kind=8) :: lexp=2.  ! power spectrum exponent
+  real(kind=8) :: proposal_std=0.01 ! proposal standard deviation
+  logical :: prior=.FALSE. ! use proposal as prior distribution
+  logical :: proposal_init=.FALSE. ! use proposal as initial sample
+
+  ! Program parameters -> method definition
+  integer, parameter :: s = 2   ! number of scales in multiple scale ensemble
+  integer, dimension(s) :: scales=(/ 0, 6 /)  ! scales for multiple scale ensemble
+  integer, dimension(s) :: multiplicity=(/ 1, 4 /)  ! multiplicity of each scale in the Schur products
+
+  real(kind=8) :: convergence_epsilon=0.01 ! maximal relative variation of the optimality score for convergence
+
+  ! Seeding of random number generator
+  integer :: seedloop = 4 ! number of additional iterations to generate seed
+
+  ! Program parameters -> options
+  logical :: apply_constraint=.TRUE.
+  logical :: perform_sampling=.FALSE.
+  logical :: check_convergence=.FALSE.
+  logical :: read_inputs=.FALSE.
+  logical :: iteration_diag=.FALSE.
+  logical :: constraint_diag=.TRUE.
+
+  ! Constraint parameters
+  logical :: constrain_velocity=.FALSE.
+  logical :: constrain_vorticity=.TRUE.
+  logical :: constrain_advection=.TRUE.
+  logical :: constrain_diffusion=.TRUE.
+  logical :: constrain_turbulent_dissipation=.TRUE.
+
+  ! Physical parameters
+  real(kind=8) :: velvar=0.001
+  real(kind=8) :: mu=1.
+  real(kind=8) :: rossby=1.
+  real(kind=8) :: nu=1.
+  real(kind=8) :: gamma=1.
+  real(kind=8) :: s0=1.
+  real(kind=8) :: tau=0.
+
+  namelist/experiment/ expt, m, mup, ktini, ktend, mcmc_maxiter, convergence_check, convergence_epsilon
+  namelist/grid/ dt, nlongitude, nlatitude, longitude_min, longitude_max, latitude_min, latitude_max, lmax, plegres
+  namelist/proposal_par/ lm, lc, lexp, proposal_std, prior, proposal_init, scales, multiplicity
+  namelist/options/ seedloop, apply_constraint, perform_sampling, check_convergence, read_inputs, iteration_diag, constraint_diag
+  namelist/physics/ velvar, mu, rossby, nu, gamma, s0, tau
+  namelist/constraints/ constrain_velocity, constrain_vorticity, constrain_advection, constrain_diffusion, constrain_turbulent_dissipation
