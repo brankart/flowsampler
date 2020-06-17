@@ -1,0 +1,60 @@
+&experiment ! General parameters describing the experiment
+  expt='advfrc4' ! Name of the experiment
+  m = 100 ! ensemble size
+  mup = 1 ! updated ensemble size
+  ktini = 1 ! initial time step
+  ktend = 200 ! final time step
+  mcmc_maxiter=1000 ! maximum number of iteration in MCMC chain
+  convergence_check=100 ! Number of iterations between convergence checks
+  convergence_epsilon=0.01 ! maximal relative variation of the optimality score for convergence
+/
+&grid ! Grid parameters
+  dt=0.1 ! time step
+  nlongitude=121  ! grid size (longitude)
+  nlatitude=81  ! grid size (latitude)
+  longitude_min=0. ! minimum longitude
+  longitude_max=30. ! maximum longitude
+  latitude_min=40. ! minimum latitude
+  latitude_max=60. ! maximum latitude
+  lmax=80 ! max degree of the spherical harmonics
+  plegres=10 ! resolution required for Legendre polynomials
+/
+&proposal_par ! Characteristics of the proposal distribution
+  lm=0.  ! scale of power spectrum maximum
+  lc=6.4  ! power spectrum characteristic scale
+  lexp=4.0 ! power spectrum exponent
+  proposal_std=0.003 ! proposal standard deviation
+  prior=.FALSE. ! use proposal as prior distribution
+  proposal_init=.TRUE. ! use proposal as initial condition of the chains
+  scales(1)=0
+  scales(2)=48
+  multiplicity(1)=1
+  multiplicity(2)=4
+  !scales=(/ 0, 6 /)  ! scales for multiple scale ensemble
+  !multiplicity=(/ 1, 6 /)  ! multiplicity of each scale in the Schur products
+/
+&options ! Program options
+  seedloop = 3 ! number of additional iterations to generate seed
+  apply_constraint=.TRUE.
+  perform_sampling=.TRUE.
+  check_convergence=.FALSE.
+  read_inputs=.TRUE.
+  iteration_diag=.FALSE.
+  constraint_diag=.TRUE.
+/
+&physics
+  velvar=0.001
+  mu=20.
+  rossby=0.5
+  nu=0.001
+  gamma=0.1
+  s0=0.05
+  tau=1.
+/
+&constraints
+  constrain_velocity=.FALSE.
+  constrain_vorticity=.FALSE.
+  constrain_advection=.TRUE.
+  constrain_diffusion=.TRUE.
+  constrain_turbulent_dissipation=.TRUE.
+/
