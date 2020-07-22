@@ -760,8 +760,6 @@ contains
      &                MPI_SUM,mpi_comm_world,mpi_code)
 #endif
 
-  fullstate = fullstate /lc
-
   end subroutine recompose_state
 
   ! ======================================================================
