@@ -26,6 +26,7 @@
 ! ----------------------------------------------------------------------
 MODULE flowsampler_kinematics
   use flowsampler_grid
+  use flowsampler_units
   IMPLICIT NONE
   PRIVATE
 
@@ -50,8 +51,8 @@ MODULE flowsampler_kinematics
     REAL(KIND=8), DIMENSION(:,:), INTENT( in ) :: psi
     REAL(KIND=8), DIMENSION(:,:), INTENT( out ) :: u, v
 
-    INTEGER :: i, j, k, ip1
-    REAL(KIND=8) :: coslat
+    INTEGER :: i, j, k, ip1, jp1
+    REAL(KIND=8) :: coslat, invdx, invdy, dlonratio, dlatratio
 
     ! Check size of input vectors
     IF (SIZE(psi,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_kinematics'
@@ -63,23 +64,26 @@ MODULE flowsampler_kinematics
 
     u=0. ; v=0.
 
+    invdx = invdlon ; invdy = invdlat
+
 #if defined MPI
 
     CALL mpi_comm_size(mpi_comm_flow_sampler_kinematics,nproc,mpi_code)
     CALL mpi_comm_rank(mpi_comm_flow_sampler_kinematics,iproc,mpi_code)
 
-    DO k=iproc,nlon*(nlat-1)-1,nproc
-      i = 1 + MOD(k,nlon)
-      j = 1 + k/nlon
-      u(i,j) = - ( psi(i,j+1) - psi(i,j) )
-    ENDDO
-
     DO k=iproc,nlon*nlat-1,nproc
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
       ip1 = 1 + MOD(i,nlon)
+      jp1 = 1 + MOD(j,nlat)
       coslat = coslatitude(j)
-      v(i,j) = ( psi(ip1,j) - psi(i,j) ) / coslat
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = invdlon / dlonratio
+        invdy = invdlat / dlatratio
+      ENDIF
+      u(i,j) = - ( psi(i,jp1) - psi(i,j) ) * invdy
+      v(i,j) = ( psi(ip1,j) - psi(i,j) ) * invdx / coslat
     ENDDO
 
     call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
@@ -89,28 +93,29 @@ MODULE flowsampler_kinematics
 
 #else
 
-    DO j=1,nlat-1
-      DO i=1,nlon
-        u(i,j) = - ( psi(i,j+1) - psi(i,j) )
-      ENDDO
-    ENDDO
-
-    DO j=1,nlat
+    DO j=1,nlatœ
+      jp1 = 1 + MOD(j,nlat)
       coslat = coslatitude(j)
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = invdlon / dlonratio
+        invdy = invdlat / dlatratio
+      ENDIF
       DO i=1,nlon
         ip1 = 1 + MOD(i,nlon)
-        v(i,j) = ( psi(ip1,j) - psi(i,j) ) / coslat
+        u(i,j) = - ( psi(i,jp1) - psi(i,j) ) * invdy
+        v(i,j) = ( psi(ip1,j) - psi(i,j) ) * invdx / coslat
       ENDDO
     ENDDO
 
 #endif
 
+    u(:,nlat) = 0.
     IF (.NOT.periodic) v(nlon,:) = 0.
     IF (npole) v(:,nlat) = 0.
     IF (spole) v(:,1) = 0.
 
-    u = u * invdlat
-    v = v * invdlon
+    IF (physical_units) CALL uv2geo(u,v)
 
     END SUBROUTINE velocity
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -154,7 +159,6 @@ MODULE flowsampler_kinematics
     call MPI_ALLREDUCE (MPI_IN_PLACE,unorm,nlon*nlat,MPI_DOUBLE_PRECISION, &
      &                  MPI_SUM,mpi_comm_flow_sampler_kinematics,mpi_code)
 
-
 #else
 
     DO j=2,nlat-1
@@ -184,6 +188,7 @@ MODULE flowsampler_kinematics
 
     INTEGER :: i, j, k, im1
     REAL(KIND=8) :: coslat, sinlat, zetan, zetas
+    REAL(KIND=8) :: invdx, invdy, dlonratio, dlatratio
 
     ! Check size of input vectors
     IF (SIZE(zeta,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_kinematics'
@@ -194,6 +199,8 @@ MODULE flowsampler_kinematics
     IF (SIZE(v,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_kinematics'
 
     zeta=0.
+
+    invdx = invdlon ; invdy = invdlat ; dlonratio =1._8
 
 #if defined MPI
 
@@ -206,10 +213,14 @@ MODULE flowsampler_kinematics
       im1 = 1 + MOD(nlon+i-2,nlon)
       coslat = coslatitude(j)
       sinlat = sinlatitude(j)
-      !if (i==10) print *, 'sincoslat',j,sinlat,coslat
-      zeta(i,j) = ( v(i,j) - v(im1,j) ) * invdlon / coslat
-      zeta(i,j) = zeta(i,j) - ( u(i,j) - u(i,j-1) ) * invdlat
-      zeta(i,j) = zeta(i,j) + 0.5_8 * ( u(i,j) + u(i,j-1) ) * sinlat / coslat
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = invdlon / dlonratio
+        invdy = invdlat / dlatratio
+      ENDIF
+      zeta(i,j) = 0.5_8 * ( u(i,j) + u(i,j-1) ) * sinlat / ( coslat * dlonratio )
+      zeta(i,j) = zeta(i,j) - ( u(i,j) - u(i,j-1) ) * invdy
+      zeta(i,j) = zeta(i,j) + ( v(i,j) - v(im1,j) ) * invdx / coslat
     ENDDO
 
     call MPI_ALLREDUCE (MPI_IN_PLACE,zeta,nlon*nlat,MPI_DOUBLE_PRECISION, &
@@ -220,11 +231,16 @@ MODULE flowsampler_kinematics
     DO j=2,nlat-1
       coslat = coslatitude(j)
       sinlat = sinlatitude(j)
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = invdlon / dlonratio
+        invdy = invdlat / dlatratio
+      ENDIF
       DO i=1,nlon
         im1 = 1 + MOD(i-2,nlon)
-        zeta(i,j) = ( v(i,j) - v(im1,j) ) * invdlon / coslat
-        zeta(i,j) = zeta(i,j) - ( u(i,j) - u(i,j-1) ) * invdlat
-        zeta(i,j) = zeta(i,j) + 0.5_8 * ( u(i,j) + u(i,j-1) ) * sinlat / coslat
+        zeta(i,j) = 0.5_8 * ( u(i,j) + u(i,j-1) ) * sinlat / ( coslat * dlonratio )
+        zeta(i,j) = zeta(i,j) - ( u(i,j) - u(i,j-1) ) * invdy
+        zeta(i,j) = zeta(i,j) + ( v(i,j) - v(im1,j) ) * invdx / coslat
       ENDDO
     ENDDO
 
@@ -240,7 +256,7 @@ MODULE flowsampler_kinematics
         DO i=1,nlon
           zetas = zetas - u(i,1)
         ENDDO
-        zeta(:,1) = 4._8 * zetas * invdlat / nlon
+        zeta(:,1) = 4._8 * zetas * invdy / nlon
       ENDIF
 
       IF (latmax==90.) THEN
@@ -248,7 +264,7 @@ MODULE flowsampler_kinematics
         DO i=1,nlon
           zetan = zetan + u(i,nlat-1)
         ENDDO
-        zeta(:,nlat) = 4._8 * zetan * invdlat / nlon
+        zeta(:,nlat) = 4._8 * zetan * invdy / nlon
       ENDIF
     ENDIF
 
