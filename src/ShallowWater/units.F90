@@ -137,8 +137,8 @@ MODULE flowsampler_units
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
       CALL distance_ratio(j,dlonratio,dlatratio)
-      u(i,j) = u(i,j) / dlatratio
-      v(i,j) = v(i,j) / dlonratio
+      u(i,j) = u(i,j) * dlatratio
+      v(i,j) = v(i,j) * dlonratio
     ENDDO
 
     call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
@@ -151,8 +151,8 @@ MODULE flowsampler_units
     DO j=1,nlat
       CALL distance_ratio(j,dlonratio,dlatratio)
       DO i=1,nlon
-        u(i,j) = u(i,j) / dlatratio
-        v(i,j) = v(i,j) / dlonratio
+        u(i,j) = u(i,j) * dlatratio
+        v(i,j) = v(i,j) * dlonratio
       ENDDO
     ENDDO
 
@@ -186,8 +186,8 @@ MODULE flowsampler_units
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
       CALL distance_ratio(j,dlonratio,dlatratio)
-      u(i,j) = u(i,j) * dlatratio
-      v(i,j) = v(i,j) * dlonratio
+      u(i,j) = u(i,j) / dlatratio
+      v(i,j) = v(i,j) / dlonratio
     ENDDO
 
     call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
@@ -200,8 +200,8 @@ MODULE flowsampler_units
     DO j=1,nlat
       CALL distance_ratio(j,dlonratio,dlatratio)
       DO i=1,nlon
-        u(i,j) = u(i,j) * dlatratio
-        v(i,j) = v(i,j) * dlonratio
+        u(i,j) = u(i,j) / dlatratio
+        v(i,j) = v(i,j) / dlonratio
       ENDDO
     ENDDO
 

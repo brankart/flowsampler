@@ -27,10 +27,13 @@
 ! ----------------------------------------------------------------------
 MODULE flowsampler_dynamics
   use flowsampler_grid
+  use flowsampler_units
   IMPLICIT NONE
   PRIVATE
 
   PUBLIC advection, diffusion, turbulent_dissipation, advection_rate
+
+  LOGICAL, PUBLIC, SAVE :: normalize_residual = .FALSE.
 
 #if defined MPI
   ! Public definitions for MPI
@@ -48,18 +51,14 @@ MODULE flowsampler_dynamics
 !----------------------------------------------------------------------
 ! ** Purpose :   Compute residual with respect to advection of potential vorticity
 !----------------------------------------------------------------------
-    REAL(KIND=8), DIMENSION(:,:), INTENT( in ) :: zeta0, u0, v0
-    REAL(KIND=8), DIMENSION(:,:), INTENT( in ) :: zeta1, u1, v1
+    REAL(KIND=8), DIMENSION(:,:), INTENT( inout ) :: zeta0, u0, v0
+    REAL(KIND=8), DIMENSION(:,:), INTENT( inout ) :: zeta1, u1, v1
     REAL(KIND=8), DIMENSION(:,:), INTENT( out) :: advresidual
     REAL(KIND=8), INTENT( in ) :: rossby, dt
 
     INTEGER :: i, j, k
-    REAL(KIND=8) :: zeta_past, zeta_future, invrossby
+    REAL(KIND=8) :: zeta_past, zeta_future, zeta_planetary
     REAL(KIND=8) :: dtheta, dphi, lon, lat
-
-    advresidual = 0.
-
-    invrossby = 1._8 / rossby
 
     ! Check size of input vectors
     IF (SIZE(zeta0,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
@@ -77,6 +76,18 @@ MODULE flowsampler_dynamics
     IF (SIZE(advresidual,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
     IF (SIZE(advresidual,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_dynamics'
 
+    ! Initialization
+    advresidual = 0.
+
+    IF (physical_units) THEN
+      zeta_planetary = 2._8 * earthvorticity
+    ELSE
+      zeta_planetary = 1._8 / rossby
+    ENDIF
+
+    IF (physical_units) CALL uv2rad(u1,v1)
+    IF (physical_units) CALL uv2rad(u0,v0)
+
 #if defined MPI
 
     CALL mpi_comm_size(mpi_comm_flow_sampler_dynamics,nproc,mpi_code)
@@ -90,16 +101,21 @@ MODULE flowsampler_dynamics
       dphi = - v0(i,j) * dt * 0.5_8
       call get_location(i,j,dtheta,dphi,lon,lat)
       call grid_interp(zeta0,lon,lat,zeta_past)
-      IF (zeta_past.NE.spval) zeta_past = zeta_past + invrossby * SIN(lat*deg2rad)
+      IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
       ! advect potential vorticity from past situation
       dtheta = u1(i,j) * dt * 0.5_8
       dphi = v1(i,j) * dt * 0.5_8
       call get_location(i,j,dtheta,dphi,lon,lat)
       call grid_interp(zeta1,lon,lat,zeta_future)
-      IF (zeta_future.NE.spval) zeta_future = zeta_future + invrossby * SIN(lat*deg2rad)
+      IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
       ! compute misfit between future and past potential vorticity
       IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
-        advresidual(i,j) = ( zeta_future - zeta_past ) / dt
+        IF (normalize_residual) THEN
+          advresidual(i,j) = 2.9_8 * ( zeta_future - zeta_past ) &
+                &  / ( ABS(zeta_future) +  ABS(zeta_past) )
+        ELSE
+          advresidual(i,j) = ( zeta_future - zeta_past ) / dt
+        ENDIF
       ENDIF
     ENDDO
 
@@ -111,25 +127,33 @@ MODULE flowsampler_dynamics
     DO j=1,nlat
       DO i=1,nlon
         ! advect potential vorticity from past situation
-        dtheta = - u0(i,j) * dt
-        dphi = - v0(i,j) * dt
+        dtheta = - u0(i,j) * dt * 0.5_8
+        dphi = - v0(i,j) * dt * 0.5_8
         call get_location(i,j,dtheta,dphi,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
-        IF (zeta_past.NE.spval) zeta_past = zeta_past + invrossby * SIN(lat*deg2rad)
+        IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
-        dtheta = u1(i,j) * dt
-        dphi = v1(i,j) * dt
+        dtheta = u1(i,j) * dt * 0.5_8
+        dphi = v1(i,j) * dt * 0.5_8
         call get_location(i,j,dtheta,dphi,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
-        IF (zeta_future.NE.spval) zeta_future = zeta_future + invrossby * SIN(lat*deg2rad)
+        IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
         ! compute misfit between future and past potential vorticity
         IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
-          advresidual(i,j) = ( zeta_future - zeta_past ) / dt
+          IF (normalize_residual) THEN
+            advresidual(i,j) = 2.9_8 * ( zeta_future - zeta_past ) &
+                  &  / ( ABS(zeta_future) +  ABS(zeta_past) )
+          ELSE
+            advresidual(i,j) = ( zeta_future - zeta_past ) / dt
+          ENDIF
         ENDIF
       ENDDO
     ENDDO
 
 #endif
+
+    IF (physical_units) CALL uv2meter(u1,v1)
+    IF (physical_units) CALL uv2meter(u0,v0)
 
     END SUBROUTINE advection
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -145,7 +169,7 @@ MODULE flowsampler_dynamics
 
     INTEGER :: i, j, k, ip1, im1
     REAL(KIND=8) :: coslat, sinlatp1, sinlatm1
-    REAL(KIND=8) :: zetai, zetaj, umean, vmean, invrossby
+    REAL(KIND=8) :: zetai, zetaj, umean, vmean, zeta_planetary
 
     advrate = 0.
 
@@ -159,7 +183,7 @@ MODULE flowsampler_dynamics
     IF (SIZE(advrate,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
     IF (SIZE(advrate,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_dynamics'
 
-    invrossby = 1._8 / rossby
+    zeta_planetary = 1._8 / rossby
 
 #if defined MPI
 
@@ -177,7 +201,7 @@ MODULE flowsampler_dynamics
       zetaj = ( zeta(i,j+1) - zeta(i,j-1) ) * invdlat
       sinlatm1 = sinlatitude(j-1)
       sinlatp1 = sinlatitude(j+1)
-      zetaj = zetaj + ( sinlatp1 - sinlatm1 ) * invdlat * invrossby
+      zetaj = zetaj + ( sinlatp1 - sinlatm1 ) * invdlat * zeta_planetary
       umean = ( u(i,j+1) + u(i,j) ) * 0.5_8
       vmean = ( v(im1,j) + v(i,j) ) * 0.5_8
       advrate(i,j) = zetai * umean + zetaj * vmean
@@ -198,7 +222,7 @@ MODULE flowsampler_dynamics
         zetaj = ( zeta(i,j+1) - zeta(i,j-1) ) * invdlat
         sinlatm1 = sinlatitude(j-1)
         sinlatp1 = sinlatitude(j+1)
-        zetaj = zetaj + ( sinlatp1 - sinlatm1 ) * invdlat * invrossby
+        zetaj = zetaj + ( sinlatp1 - sinlatm1 ) * invdlat * zeta_planetary
         umean = ( u(i,j+1) + u(i,j) ) * 0.5_8
         vmean = ( v(im1,j) + v(i,j) ) * 0.5_8
         advrate(i,j) = zetai * umean + zetaj * vmean
