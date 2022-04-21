@@ -188,7 +188,7 @@ MODULE flowsampler_grid
       ELSE
         i = MIN(INT(rlon),nlon)
       ENDIF
-      j = MIN(INT(rlat),nlat-1)
+      j = MAX(1,MIN(INT(rlat),nlat-1))
       rlon = rlon - REAL(i,8)
       rlat = rlat - REAL(j,8)
       ip1 = 1 + MOD(i,nlon)

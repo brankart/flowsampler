@@ -86,6 +86,8 @@ MODULE flowsampler_kinematics
       v(i,j) = ( psi(ip1,j) - psi(i,j) ) * invdx / coslat
     ENDDO
 
+    IF (physical_units) CALL uv2geo(u,v)
+
     call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
      &                  MPI_SUM,mpi_comm_flow_sampler_kinematics,mpi_code)
     call MPI_ALLREDUCE (MPI_IN_PLACE,v,nlon*nlat,MPI_DOUBLE_PRECISION, &
@@ -93,7 +95,7 @@ MODULE flowsampler_kinematics
 
 #else
 
-    DO j=1,nlatœ
+    DO j=1,nlat
       jp1 = 1 + MOD(j,nlat)
       coslat = coslatitude(j)
       IF (physical_units) THEN
@@ -108,14 +110,14 @@ MODULE flowsampler_kinematics
       ENDDO
     ENDDO
 
+    IF (physical_units) CALL uv2geo(u,v)
+
 #endif
 
     u(:,nlat) = 0.
     IF (.NOT.periodic) v(nlon,:) = 0.
     IF (npole) v(:,nlat) = 0.
     IF (spole) v(:,1) = 0.
-
-    IF (physical_units) CALL uv2geo(u,v)
 
     END SUBROUTINE velocity
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&

@@ -21,8 +21,6 @@
 ! ----------------------------------------------------------------------
 ! List of routines/functions :
 ! ----------------------------
-! uv2meter : transform velocity from radian to meter
-! uv2rad : transform velocity from meter to radian
 ! uv2geo : transform to geostrophic velocities
 ! ----------------------------------------------------------------------
 MODULE flowsampler_units
@@ -30,7 +28,7 @@ MODULE flowsampler_units
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC uv2meter, uv2rad, distance_ratio, uv2geo
+  PUBLIC distance_ratio, uv2geo
 
 #if defined MPI
   ! Public definitions for MPI
@@ -81,9 +79,6 @@ MODULE flowsampler_units
 
 #if defined MPI
 
-    CALL mpi_comm_size(mpi_comm_flow_sampler_units,nproc,mpi_code)
-    CALL mpi_comm_rank(mpi_comm_flow_sampler_units,iproc,mpi_code)
-
     DO k=iproc,nlon*nlat-1,nproc
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
@@ -91,11 +86,6 @@ MODULE flowsampler_units
       u(i,j) = u(i,j) * gravityoverf
       v(i,j) = v(i,j) * gravityoverf
     ENDDO
-
-    call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
-    call MPI_ALLREDUCE (MPI_IN_PLACE,v,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
 
 #else
 
@@ -110,104 +100,6 @@ MODULE flowsampler_units
 #endif
 
     END SUBROUTINE uv2geo
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-! --------------------------------------------------------------------
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    SUBROUTINE uv2meter(u,v)
-!----------------------------------------------------------------------
-! ** Purpose :   transform velocity from radian to meter
-!----------------------------------------------------------------------
-    REAL(KIND=8), DIMENSION(:,:), INTENT( inout ) :: u, v
-
-    INTEGER :: i, j, k
-    REAL(KIND=8) :: dlonratio, dlatratio
-
-    ! Check size of input vectors
-    IF (SIZE(u,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(u,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(v,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(v,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_units'
-
-#if defined MPI
-
-    CALL mpi_comm_size(mpi_comm_flow_sampler_units,nproc,mpi_code)
-    CALL mpi_comm_rank(mpi_comm_flow_sampler_units,iproc,mpi_code)
-
-    DO k=iproc,nlon*nlat-1,nproc
-      i = 1 + MOD(k,nlon)
-      j = 1 + k/nlon
-      CALL distance_ratio(j,dlonratio,dlatratio)
-      u(i,j) = u(i,j) * dlatratio
-      v(i,j) = v(i,j) * dlonratio
-    ENDDO
-
-    call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
-    call MPI_ALLREDUCE (MPI_IN_PLACE,v,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
-
-#else
-
-    DO j=1,nlat
-      CALL distance_ratio(j,dlonratio,dlatratio)
-      DO i=1,nlon
-        u(i,j) = u(i,j) * dlatratio
-        v(i,j) = v(i,j) * dlonratio
-      ENDDO
-    ENDDO
-
-#endif
-
-    END SUBROUTINE uv2meter
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-! --------------------------------------------------------------------
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    SUBROUTINE uv2rad(u,v)
-!----------------------------------------------------------------------
-! ** Purpose :   transform velocity from meter to radian
-!----------------------------------------------------------------------
-    REAL(KIND=8), DIMENSION(:,:), INTENT( inout ) :: u, v
-
-    INTEGER :: i, j, k
-    REAL(KIND=8) :: dlonratio, dlatratio
-
-    ! Check size of input vectors
-    IF (SIZE(u,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(u,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(v,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_units'
-    IF (SIZE(v,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_units'
-
-#if defined MPI
-
-    CALL mpi_comm_size(mpi_comm_flow_sampler_units,nproc,mpi_code)
-    CALL mpi_comm_rank(mpi_comm_flow_sampler_units,iproc,mpi_code)
-
-    DO k=iproc,nlon*nlat-1,nproc
-      i = 1 + MOD(k,nlon)
-      j = 1 + k/nlon
-      CALL distance_ratio(j,dlonratio,dlatratio)
-      u(i,j) = u(i,j) / dlatratio
-      v(i,j) = v(i,j) / dlonratio
-    ENDDO
-
-    call MPI_ALLREDUCE (MPI_IN_PLACE,u,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
-    call MPI_ALLREDUCE (MPI_IN_PLACE,v,nlon*nlat,MPI_DOUBLE_PRECISION, &
-     &                  MPI_SUM,mpi_comm_flow_sampler_units,mpi_code)
-
-#else
-
-    DO j=1,nlat
-      CALL distance_ratio(j,dlonratio,dlatratio)
-      DO i=1,nlon
-        u(i,j) = u(i,j) / dlatratio
-        v(i,j) = v(i,j) / dlonratio
-      ENDDO
-    ENDDO
-
-#endif
-
-    END SUBROUTINE uv2rad
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&

@@ -58,7 +58,7 @@ MODULE flowsampler_dynamics
 
     INTEGER :: i, j, k
     REAL(KIND=8) :: zeta_past, zeta_future, zeta_planetary
-    REAL(KIND=8) :: dtheta, dphi, lon, lat
+    REAL(KIND=8) :: dtheta, dphi, lon, lat, invdx, invdy, dlonratio, dlatratio
 
     ! Check size of input vectors
     IF (SIZE(zeta0,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
@@ -79,14 +79,13 @@ MODULE flowsampler_dynamics
     ! Initialization
     advresidual = 0.
 
+    invdx = 1._8 ; invdy = 1._8
+
     IF (physical_units) THEN
       zeta_planetary = 2._8 * earthvorticity
     ELSE
       zeta_planetary = 1._8 / rossby
     ENDIF
-
-    IF (physical_units) CALL uv2rad(u1,v1)
-    IF (physical_units) CALL uv2rad(u0,v0)
 
 #if defined MPI
 
@@ -96,23 +95,28 @@ MODULE flowsampler_dynamics
     DO k=iproc,nlon*nlat-1,nproc
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = 1._8 / dlonratio
+        invdy = 1._8 / dlatratio
+      ENDIF
       ! advect potential vorticity from past situation
-      dtheta = - u0(i,j) * dt * 0.5_8
-      dphi = - v0(i,j) * dt * 0.5_8
+      dtheta = - u0(i,j) * dt * 0.5_8 * invdx
+      dphi = - v0(i,j) * dt * 0.5_8 * invdy
       call get_location(i,j,dtheta,dphi,lon,lat)
       call grid_interp(zeta0,lon,lat,zeta_past)
       IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
       ! advect potential vorticity from past situation
-      dtheta = u1(i,j) * dt * 0.5_8
-      dphi = v1(i,j) * dt * 0.5_8
+      dtheta = u1(i,j) * dt * 0.5_8 * invdx
+      dphi = v1(i,j) * dt * 0.5_8 * invdy
       call get_location(i,j,dtheta,dphi,lon,lat)
       call grid_interp(zeta1,lon,lat,zeta_future)
       IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
       ! compute misfit between future and past potential vorticity
       IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
         IF (normalize_residual) THEN
-          advresidual(i,j) = 2.9_8 * ( zeta_future - zeta_past ) &
-                &  / ( ABS(zeta_future) +  ABS(zeta_past) )
+          advresidual(i,j) = 2._8 * ( zeta_future - zeta_past ) / &
+                  & ( ABS(zeta_future) + ABS(zeta_past) )
         ELSE
           advresidual(i,j) = ( zeta_future - zeta_past ) / dt
         ENDIF
@@ -125,24 +129,29 @@ MODULE flowsampler_dynamics
 #else
 
     DO j=1,nlat
+      IF (physical_units) THEN
+        CALL distance_ratio(j,dlonratio,dlatratio)
+        invdx = 1._8 / dlonratio
+        invdy = 1._8 / dlatratio
+      ENDIF
       DO i=1,nlon
         ! advect potential vorticity from past situation
-        dtheta = - u0(i,j) * dt * 0.5_8
-        dphi = - v0(i,j) * dt * 0.5_8
+        dtheta = - u0(i,j) * dt * 0.5_8 * invdx
+        dphi = - v0(i,j) * dt * 0.5_8 * invdy
         call get_location(i,j,dtheta,dphi,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
         IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
-        dtheta = u1(i,j) * dt * 0.5_8
-        dphi = v1(i,j) * dt * 0.5_8
+        dtheta = u1(i,j) * dt * 0.5_8 * invdx
+        dphi = v1(i,j) * dt * 0.5_8 * invdy
         call get_location(i,j,dtheta,dphi,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
         IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
         ! compute misfit between future and past potential vorticity
         IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
           IF (normalize_residual) THEN
-            advresidual(i,j) = 2.9_8 * ( zeta_future - zeta_past ) &
-                  &  / ( ABS(zeta_future) +  ABS(zeta_past) )
+            advresidual(i,j) = 2._8 * ( zeta_future - zeta_past ) / &
+                  & ( ABS(zeta_future) + ABS(zeta_past) )
           ELSE
             advresidual(i,j) = ( zeta_future - zeta_past ) / dt
           ENDIF
@@ -151,9 +160,6 @@ MODULE flowsampler_dynamics
     ENDDO
 
 #endif
-
-    IF (physical_units) CALL uv2meter(u1,v1)
-    IF (physical_units) CALL uv2meter(u0,v0)
 
     END SUBROUTINE advection
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
