@@ -28,7 +28,7 @@ MODULE flowsampler_grid
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC defgrid, coslatitude, sinlatitude, get_location, grid_interp
+  PUBLIC defgrid, coslatitude, sinlatitude, get_location, grid_interp, get_location_deg
 
   INTEGER, PUBLIC, SAVE :: nlon, nlat
   REAL(KIND=8), PUBLIC, SAVE :: lonmin, latmin
@@ -98,6 +98,19 @@ MODULE flowsampler_grid
     sinlatitude = SIN( latminrad + (j-1) * dlatrad )
 
     END FUNCTION sinlatitude
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+! --------------------------------------------------------------------
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+    SUBROUTINE get_location_deg(i,j,dx,dy,lon,lat)
+
+    INTEGER, INTENT( in ) :: i, j
+    REAL(KIND=8) , INTENT( in ) :: dtheta,dphi
+    REAL(KIND=8) , INTENT( out ) :: lon, lat
+
+    lon = lonmin + (i-1) * dlon + dx
+    lat = latmin + (j-1) * dlat + dy
+
+    END SUBROUTINE get_location_deg
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
