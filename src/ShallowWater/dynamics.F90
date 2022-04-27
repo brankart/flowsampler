@@ -58,7 +58,7 @@ MODULE flowsampler_dynamics
 
     INTEGER :: i, j, k
     REAL(KIND=8) :: zeta_past, zeta_future, zeta_planetary
-    REAL(KIND=8) :: dtheta, dphi, lon, lat, invdx, invdy, dlonratio, dlatratio
+    REAL(KIND=8) :: dx, dy, lon, lat, invdx, invdy, dlonratio, dlatratio
 
     ! Check size of input vectors
     IF (SIZE(zeta0,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
@@ -101,15 +101,15 @@ MODULE flowsampler_dynamics
         invdy = 1._8 / dlatratio
       ENDIF
       ! advect potential vorticity from past situation
-      dtheta = - u0(i,j) * dt * 0.5_8 * invdx
-      dphi = - v0(i,j) * dt * 0.5_8 * invdy
-      call get_location(i,j,dtheta,dphi,lon,lat)
+      dx = - u0(i,j) * dt * 0.5_8 * invdx
+      dy = - v0(i,j) * dt * 0.5_8 * invdy
+      call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta0,lon,lat,zeta_past)
       IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
       ! advect potential vorticity from past situation
-      dtheta = u1(i,j) * dt * 0.5_8 * invdx
-      dphi = v1(i,j) * dt * 0.5_8 * invdy
-      call get_location(i,j,dtheta,dphi,lon,lat)
+      dx = u1(i,j) * dt * 0.5_8 * invdx
+      dy = v1(i,j) * dt * 0.5_8 * invdy
+      call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta1,lon,lat,zeta_future)
       IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
       ! compute misfit between future and past potential vorticity
@@ -136,15 +136,15 @@ MODULE flowsampler_dynamics
       ENDIF
       DO i=1,nlon
         ! advect potential vorticity from past situation
-        dtheta = - u0(i,j) * dt * 0.5_8 * invdx
-        dphi = - v0(i,j) * dt * 0.5_8 * invdy
-        call get_location(i,j,dtheta,dphi,lon,lat)
+        dx = - u0(i,j) * dt * 0.5_8 * invdx
+        dy = - v0(i,j) * dt * 0.5_8 * invdy
+        call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
         IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
-        dtheta = u1(i,j) * dt * 0.5_8 * invdx
-        dphi = v1(i,j) * dt * 0.5_8 * invdy
-        call get_location(i,j,dtheta,dphi,lon,lat)
+        dx = u1(i,j) * dt * 0.5_8 * invdx
+        dy = v1(i,j) * dt * 0.5_8 * invdy
+        call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
         IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
         ! compute misfit between future and past potential vorticity

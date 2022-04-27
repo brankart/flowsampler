@@ -28,12 +28,15 @@ MODULE flowsampler_grid
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC defgrid, coslatitude, sinlatitude, get_location, grid_interp, get_location_deg
+  PUBLIC defgrid, coslatitude, coslatitude_u, sinlatitude
+  PUBLIC get_location, grid_interp
 
   INTEGER, PUBLIC, SAVE :: nlon, nlat
   REAL(KIND=8), PUBLIC, SAVE :: lonmin, latmin
   REAL(KIND=8), PUBLIC, SAVE :: lonmax, latmax
   LOGICAL, PUBLIC, SAVE :: periodic=.FALSE.
+
+  LOGICAL, PUBLIC, SAVE :: spherical_delta=.TRUE.
 
   LOGICAL, PUBLIC, SAVE :: npole = .FALSE.
   LOGICAL, PUBLIC, SAVE :: spole = .FALSE.
@@ -48,7 +51,7 @@ MODULE flowsampler_grid
 
   REAL(KIND=8), PUBLIC, PARAMETER :: pi=3.1415926535897932384626
   REAL(KIND=8), PUBLIC, PARAMETER :: deg2rad=pi/180._8
-  !REAL(KIND=8), PUBLIC, PARAMETER :: spval = huge(spval)
+  REAL(KIND=8), PUBLIC, PARAMETER :: rad2deg=1._8/deg2rad
   REAL(KIND=8), PUBLIC, PARAMETER :: spval = -9999.
 
   CONTAINS
@@ -90,6 +93,17 @@ MODULE flowsampler_grid
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+    FUNCTION coslatitude_u(j)
+
+    INTEGER, INTENT( in ) :: j
+    REAL(KIND=8) :: coslatitude_u
+
+    coslatitude_u = COS( latminrad + (j-1) * dlatrad + 0.5_8 * dlatrad )
+
+    END FUNCTION coslatitude_u
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+! --------------------------------------------------------------------
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
     FUNCTION sinlatitude(j)
 
     INTEGER, INTENT( in ) :: j
@@ -101,67 +115,65 @@ MODULE flowsampler_grid
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    SUBROUTINE get_location_deg(i,j,dx,dy,lon,lat)
+    SUBROUTINE get_location(i,j,dx,dy,lon,lat)
 
     INTEGER, INTENT( in ) :: i, j
-    REAL(KIND=8) , INTENT( in ) :: dtheta,dphi
-    REAL(KIND=8) , INTENT( out ) :: lon, lat
-
-    lon = lonmin + (i-1) * dlon + dx
-    lat = latmin + (j-1) * dlat + dy
-
-    END SUBROUTINE get_location_deg
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-! --------------------------------------------------------------------
-! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    SUBROUTINE get_location(i,j,dtheta,dphi,lon,lat)
-
-    INTEGER, INTENT( in ) :: i, j
-    REAL(KIND=8) , INTENT( in ) :: dtheta,dphi
+    REAL(KIND=8) , INTENT( in ) :: dx,dy
     REAL(KIND=8) , INTENT( out ) :: lon, lat
 
     REAL(KIND=8) :: lonref, latref, delta, azimuth, cosdlon
 
-    ! compute reference coordinates in radian
-    lonref = lonminrad + (i-1) * dlonrad
-    latref = latminrad + (j-1) * dlatrad
+    IF (spherical_delta) THEN
+      ! WARNING: In this case: dx, dy in radian along a great circle
 
-    ! compute distance and azimuth in radian
-    delta = SQRT( dtheta*dtheta + dphi*dphi )
-    if (dphi.eq.0.) then
-      if (dtheta.gt.0) then
-        azimuth = pi / 2._8    ! eastward
+      ! compute reference coordinates in radian
+      lonref = lonminrad + (i-1) * dlonrad
+      latref = latminrad + (j-1) * dlatrad
+
+      ! compute distance and azimuth in radian
+      delta = SQRT( dx*dx + dy*dy )
+      if (dy.eq.0.) then
+        if (dx.gt.0) then
+          azimuth = pi / 2._8    ! eastward
+        else
+          azimuth = - pi / 2._8  ! westward
+        endif
       else
-        azimuth = - pi / 2._8  ! westward
+        azimuth = ATAN(dx/dy)  ! dx=0 -> northward (azimuth=0)
       endif
-    else
-      azimuth = ATAN(dtheta/dphi)  ! dtheta=0 -> northward (azimuth=0)
-    endif
 
-    ! cope with negative dphi with same azimuth but negative delta
-    ! -> delta > 0 means northward, delta < 0 means southward
-    if (dphi.lt.0.) then
-      delta = - delta
-    endif
+      ! cope with negative dy with same azimuth but negative delta
+      ! -> delta > 0 means northward, delta < 0 means southward
+      if (dy.lt.0.) then
+        delta = - delta
+      endif
 
-    ! compute new coordinates
-    lat = asin( sin(latref)*cos(delta) + cos(latref)*sin(delta)*cos(azimuth) )
-    if (cos(latref).eq.0.) then
-      ! reference is at one pole
-      lon = lonref
-    elseif (cos(lat).eq.0.) then
-      ! new location is at one pole
-      lon = lonref
-    else
-      ! both are elsewhere
-      cosdlon = (cos(delta) - sin(latref)*sin(lat)) / ( cos(latref)*cos(lat) )
-      cosdlon = MAX(MIN(cosdlon,1._8),-1._8)
-      lon = lonref + sign(1._8,dtheta) * acos( cosdlon )
-    endif
+      ! compute new coordinates
+      lat = asin( sin(latref)*cos(delta) + cos(latref)*sin(delta)*cos(azimuth) )
+      if (cos(latref).eq.0.) then
+        ! reference is at one pole
+        lon = lonref
+      elseif (cos(lat).eq.0.) then
+        ! new location is at one pole
+        lon = lonref
+      else
+        ! both are elsewhere
+        cosdlon = (cos(delta) - sin(latref)*sin(lat)) / ( cos(latref)*cos(lat) )
+        cosdlon = MAX(MIN(cosdlon,1._8),-1._8)
+        lon = lonref + sign(1._8,dx) * acos( cosdlon )
+      endif
 
-    ! compute new coordinates in degrees
-    lon = lon / deg2rad
-    lat = lat / deg2rad
+      ! compute new coordinates in degrees
+      lon = lon * rad2deg
+      lat = lat * rad2deg
+
+    ELSE
+      ! WARNING: In this case: dx, dy in degrees along coordinates isolines
+
+      lon = lonmin + (i-1) * dlon + dx
+      lat = latmin + (j-1) * dlat + dy
+
+    ENDIF
 
     END SUBROUTINE get_location
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
