@@ -28,7 +28,7 @@ MODULE flowsampler_units
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC distance_ratio, uv2geo
+  PUBLIC distance_ratio, uv2geo, gravityoverf_ratio
 
 #if defined MPI
   ! Public definitions for MPI
@@ -38,7 +38,8 @@ MODULE flowsampler_units
   INTEGER, save :: iproc=0, nproc=1
 #endif
 
-  LOGICAL, PUBLIC :: physical_units=.FALSE. ! use of physical units
+  LOGICAL, PUBLIC, SAVE :: physical_units=.FALSE. ! use of physical units
+  LOGICAL, PUBLIC, SAVE :: normalize_residual = .FALSE.
 
   ! Earth geometry and angular velocity
   REAL(KIND=8), PUBLIC, PARAMETER :: earthradius=6.371d6                     ! meters

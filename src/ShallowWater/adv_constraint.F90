@@ -32,9 +32,6 @@ MODULE flowsampler_adv_constraint
 
   PUBLIC constraint_init, constraint_cost
 
-  ! Public options
-  LOGICAL, PUBLIC, SAVE :: normalize_residual = .FALSE.
-
   ! Private arrays with data fields
   INTEGER, SAVE :: nk, k0, k1 ! size and bounds of block of data
   REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: u0, v0, zeta0
@@ -58,9 +55,8 @@ MODULE flowsampler_adv_constraint
   ! Definitions for MPI
   INTEGER, save :: iproc=0, nproc=1
   INTEGER, save :: nproct, iproct, iproc_prev, iproc_next
-  INTEGER, save :: mpi_comm_timestep
+  INTEGER, PUBLIC, save :: mpi_comm_timestep
   INTEGER, DIMENSION(:), ALLOCATABLE, SAVE :: ncommt  ! communicator for every timestep
-
 
   CONTAINS
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -78,6 +74,7 @@ MODULE flowsampler_adv_constraint
     INTEGER, DIMENSION(:), ALLOCATABLE ::   irankt ! list of processors for current timestep
     INTEGER, DIMENSION(:), ALLOCATABLE ::   igrpt  ! group ID for every timestep
     REAL(KIND=8) :: coslat, coslatu, dlonratio, dlatratio, gravityoverf
+    REAL(KIND=8) :: invdx, invdy
 
 #if defined MPI
     CALL mpi_comm_size(mpi_comm_flowsampler,nproc,mpi_code)
@@ -166,15 +163,18 @@ MODULE flowsampler_adv_constraint
       coslatu = coslatitude_u(j)
       CALL distance_ratio(j,dlonratio,dlatratio)
       CALL gravityoverf_ratio(j,gravityoverf)
+      ! Inverse grid size from gradian^(-1) to meters^(-1)
+      invdx = invdlon / ( dlonratio * coslat )
+      invdy = invdlat / dlatratio
       ! Factors to obtain velocity from dynamic toprography differences
-      invdxfac(j) = gravityoverf * invdlon / ( dlonratio * coslat )
-      invdyfac(j) = gravityoverf * invdlat / dlatratio
+      invdxfac(j) = gravityoverf * invdx
+      invdyfac(j) = gravityoverf * invdy
       ! Factors to obtain relative vorticity from velocity differences
           !invdx(j) = invdlon / ( dlonratio * coslat )
           !invdy(j) = invdlat / dlatratio
           !zetafac(j) = 0.5_8 * sinlat / ( dlonratio * coslat )
-      zetafacu(j) = coslatu * dlon * dlonratio * invdlat / dlatratio
-      zetafacv(j) = invdlon / ( dlonratio * coslat )
+      zetafacu(j) = coslatu * invdy / ( invdx * coslat )
+      zetafacv(j) = invdx
       ! Factor to obtain displacement from velocity in one time step
       IF (spherical_delta) THEN
         ! WARNING: In this case: dx, dy in radian along a great circle

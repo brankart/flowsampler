@@ -33,8 +33,6 @@ MODULE flowsampler_dynamics
 
   PUBLIC advection, diffusion, turbulent_dissipation, advection_rate
 
-  LOGICAL, PUBLIC, SAVE :: normalize_residual = .FALSE.
-
 #if defined MPI
   ! Public definitions for MPI
   include "mpif.h"
