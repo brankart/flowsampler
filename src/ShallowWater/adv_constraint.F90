@@ -34,8 +34,8 @@ MODULE flowsampler_adv_constraint
 
   ! Private arrays with data fields
   INTEGER, SAVE :: nk, k0, k1 ! size and bounds of block of data
-  REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: u0, v0, zeta0
-  REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: u1, v1, zeta1
+  REAL(KIND=8), DIMENSION(:,:), PUBLIC, ALLOCATABLE :: u0, v0, zeta0
+  REAL(KIND=8), DIMENSION(:,:), PUBLIC, ALLOCATABLE :: u1, v1, zeta1
   REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: xblock0, xblock1
 
   ! Private arrays with metric/scaling factors
@@ -91,7 +91,7 @@ MODULE flowsampler_adv_constraint
     IF (allocok.NE.0) STOP 'Allocation error in flowsampler: constraint_init'
 
     ! Create global group
-    CALL mpi_comm_group(mpi_comm_flowsampler,igrp_global,mpi_code)
+    CALL mpi_comm_group( mpi_comm_flowsampler, igrp_global, mpi_code )
 
     ! Create one communicator for each timestep
     DO jt = 1, nt
@@ -204,7 +204,7 @@ MODULE flowsampler_adv_constraint
     INTEGER :: i,j,k, kk
     REAL(KIND=8) :: zetau1, zetau2, zetav, dx, dy, lon, lat
     REAL(KIND=8) :: zeta_past, zeta_future, xi
-    LOGICAL :: inmask
+    LOGICAL :: inmask, ingrid
 
     ! Compute zonal velocity for this block of current time step
     DO k=k0,k1
@@ -279,29 +279,48 @@ MODULE flowsampler_adv_constraint
       j = 1 + k/nlon
 
       inmask = (i.GT.1).AND.(i.LT.nlon).AND.(j.GT.1).AND.(j.LT.nlat)
+      inmask = inmask .AND. (iproc_prev.GE.0) ! exclude first timestep
       IF (inmask) THEN
         ! advect potential vorticity from past situation
         dx = - ( u0(i,j) + u0(i,j-1) ) * dtfacx(j)
         dy = - ( v0(i,j) + v0(i-1,j) ) * dtfacy(j)
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
-        IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
+        ingrid = zeta_past.NE.spval
+        IF (ingrid) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
         dx = ( u1(i,j) + u1(i,j-1) ) * dtfacx(j)
         dy = ( v1(i,j) + v1(i-1,j) ) * dtfacy(j)
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
-        IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
+        ingrid = ingrid .AND. (zeta_future.NE.spval)
+        IF (ingrid) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
 
-        xi = zeta_future - zeta_past
-        IF (normalize_residual) THEN
-          xi = 2._8 * xi / ( ABS(zeta_future) + ABS(zeta_past) )
+        IF (ingrid) THEN
+          xi = zeta_future - zeta_past
+          IF (normalize_residual) THEN
+            xi = 2._8 * xi / ( ABS(zeta_future) + ABS(zeta_past) )
+          ENDIF
+
+          constraint_cost = constraint_cost + xi * xi
+
         ENDIF
-
-        constraint_cost = constraint_cost + xi * xi
-
       ENDIF
+
+      ! For debug
+      !kk = k - k0 + 1
+      !xblock1(kk)= zeta0(i,j)
+      !xblock1(kk)= zeta_past
+      !IF (inmask.AND.ingrid) THEN
+      !  xblock1(kk)= xi
+      !ELSE
+      !  xblock1(kk)= 0.
+      !ENDIF
+
     ENDDO
+
+    ! For debug
+    !CALL rebuild_timestep(xblock1,zeta1)
 
     END FUNCTION constraint_cost
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -311,16 +330,24 @@ MODULE flowsampler_adv_constraint
     REAL(KIND=8), DIMENSION(:), INTENT( in )  :: xb0
     REAL(KIND=8), DIMENSION(:), INTENT( out ) :: xb1
 
+    !INTEGER :: ip, np
+    INTEGER, parameter :: tag=110
+
 #if defined MPI
+    !print *, 'in send:,',iproc
+    !CALL mpi_comm_size(mpi_comm_flowsampler,np,mpi_code)
+    !CALL mpi_comm_rank(mpi_comm_flowsampler,ip,mpi_code)
+    !print *, 'before send:,',np,ip,iproc_prev,iproc_next
+
     ! Send block to next timestep
-    IF (iproc_next.LE.nproc) THEN
+    IF (iproc_next.LT.nproc) THEN
       CALL MPI_SEND(xb1,nk,MPI_DOUBLE_PRECISION, &
-      &             iproc_next,mpi_comm_flowsampler,mpi_code)
+      &             iproc_next,tag,mpi_comm_flowsampler,mpi_code)
     ENDIF
     ! Receive block from previous timestep
     IF (iproc_prev.GE.0) THEN
       CALL MPI_RECV(xb0,nk,MPI_DOUBLE_PRECISION, &
-      &             iproc_prev,mpi_comm_flowsampler,mpi_status_msg,mpi_code)
+      &             iproc_prev,tag,mpi_comm_flowsampler,mpi_status_msg,mpi_code)
     ENDIF
 #endif
 
