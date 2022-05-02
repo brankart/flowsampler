@@ -99,14 +99,14 @@ MODULE flowsampler_dynamics
         invdy = 1._8 / dlatratio
       ENDIF
       ! advect potential vorticity from past situation
-      dx = - u0(i,j) * dt * 0.5_8 * invdx
-      dy = - v0(i,j) * dt * 0.5_8 * invdy
+      dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.5_8 * invdx
+      dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.5_8 * invdy
       call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta0,lon,lat,zeta_past)
       IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
       ! advect potential vorticity from past situation
-      dx = u1(i,j) * dt * 0.5_8 * invdx
-      dy = v1(i,j) * dt * 0.5_8 * invdy
+      dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.5_8 * invdx
+      dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.5_8 * invdy
       call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta1,lon,lat,zeta_future)
       IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
@@ -134,14 +134,14 @@ MODULE flowsampler_dynamics
       ENDIF
       DO i=1,nlon
         ! advect potential vorticity from past situation
-        dx = - u0(i,j) * dt * 0.5_8 * invdx
-        dy = - v0(i,j) * dt * 0.5_8 * invdy
+        dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.5_8 * invdx
+        dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.5_8 * invdy
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
         IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
-        dx = u1(i,j) * dt * 0.5_8 * invdx
-        dy = v1(i,j) * dt * 0.5_8 * invdy
+        dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.5_8 * invdx
+        dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.5_8 * invdy
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
         IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
