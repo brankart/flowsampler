@@ -31,7 +31,7 @@ MODULE flowsampler_dynamics
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC advection, diffusion, turbulent_dissipation, advection_rate
+  PUBLIC advection, diffusion, turbulent_dissipation, advection_rate, add_pv_term
 
 #if defined MPI
   ! Public definitions for MPI
@@ -99,17 +99,17 @@ MODULE flowsampler_dynamics
         invdy = 1._8 / dlatratio
       ENDIF
       ! advect potential vorticity from past situation
-      dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.5_8 * invdx
-      dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.5_8 * invdy
+      dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.25_8 * invdx
+      dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.25_8 * invdy
       call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta0,lon,lat,zeta_past)
-      IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
+      !IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
       ! advect potential vorticity from past situation
-      dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.5_8 * invdx
-      dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.5_8 * invdy
+      dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.25_8 * invdx
+      dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.25_8 * invdy
       call get_location(i,j,dx,dy,lon,lat)
       call grid_interp(zeta1,lon,lat,zeta_future)
-      IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
+      !IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
       ! compute misfit between future and past potential vorticity
       IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
         IF (normalize_residual) THEN
@@ -134,17 +134,17 @@ MODULE flowsampler_dynamics
       ENDIF
       DO i=1,nlon
         ! advect potential vorticity from past situation
-        dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.5_8 * invdx
-        dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.5_8 * invdy
+        dx = - ( u0(i,j) + u0(i,j-1) ) * dt * 0.25_8 * invdx
+        dy = - ( v0(i,j) + v0(i-1,j) ) * dt * 0.25_8 * invdy
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
-        IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
+        !IF (zeta_past.NE.spval) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
         ! advect potential vorticity from past situation
-        dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.5_8 * invdx
-        dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.5_8 * invdy
+        dx = ( u1(i,j) + u1(i,j-1) ) * dt * 0.25_8 * invdx
+        dy = ( v1(i,j) + v1(i-1,j) ) * dt * 0.25_8 * invdy
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
-        IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
+        !IF (zeta_future.NE.spval) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
         ! compute misfit between future and past potential vorticity
         IF ( (zeta_past.NE.spval) .AND. (zeta_future.NE.spval) ) THEN
           IF (normalize_residual) THEN
@@ -160,6 +160,51 @@ MODULE flowsampler_dynamics
 #endif
 
     END SUBROUTINE advection
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+! --------------------------------------------------------------------
+! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+    SUBROUTINE add_pv_term(zeta,adt)
+!----------------------------------------------------------------------
+! ** Purpose :   Compute residual with respect to advection of potential vorticity
+!----------------------------------------------------------------------
+    REAL(KIND=8), DIMENSION(:,:), INTENT( inout ) :: zeta
+    REAL(KIND=8), DIMENSION(:,:), INTENT( in ) :: adt
+
+    INTEGER :: i, j, k
+    REAL(KIND=8) :: gravityoverf, qg_factor, sinlat
+
+    ! Check size of input vectors
+    IF (SIZE(zeta,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
+    IF (SIZE(zeta,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_dynamics'
+    IF (SIZE(adt,1).NE.nlon) STOP 'Inconsistent size in flow_sampler_dynamics'
+    IF (SIZE(adt,2).NE.nlat) STOP 'Inconsistent size in flow_sampler_dynamics'
+
+    IF (qg_model) THEN
+      DO j=1,nlat
+        CALL gravityoverf_ratio(j,gravityoverf)
+        qg_factor = gravityoverf / (rossby_radius*rossby_radius)
+        DO i=1,nlon
+          zeta(i,j) = zeta(i,j) - adt(i,j) * qg_factor
+        ENDDO
+      ENDDO
+    ELSEIF (pv_model) THEN
+      DO j=1,nlat
+        sinlat = sinlatitude(j)
+        DO i=1,nlon
+          zeta(i,j) = zeta(i,j) + 2._8 * earthvorticity * sinlat
+          zeta(i,j) = zeta(i,j) / ( adt(i,j) - adt_ref )
+        ENDDO
+      ENDDO
+    ELSE
+      DO j=1,nlat
+        sinlat = sinlatitude(j)
+        DO i=1,nlon
+          zeta(i,j) = zeta(i,j) + 2._8 * earthvorticity * sinlat
+        ENDDO
+      ENDDO
+    ENDIF
+
+    END SUBROUTINE add_pv_term
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&

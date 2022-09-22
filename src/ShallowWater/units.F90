@@ -41,6 +41,13 @@ MODULE flowsampler_units
   LOGICAL, PUBLIC, SAVE :: physical_units=.FALSE. ! use of physical units
   LOGICAL, PUBLIC, SAVE :: normalize_residual = .FALSE.
 
+  ! Use QG/PV model ?
+  LOGICAL, PUBLIC, SAVE :: qg_model=.FALSE.
+  LOGICAL, PUBLIC, SAVE :: pv_model=.FALSE.
+  REAL(KIND=8), PUBLIC, SAVE :: rossby_radius=3.d4 ! Rossby radius in meter
+  REAL(KIND=8), PUBLIC, SAVE :: dissip_rate=0. ! Dissipation rate 
+  REAL(KIND=8), PUBLIC, SAVE :: adt_ref=-1. ! Reference topography level
+
   ! Earth geometry and angular velocity
   REAL(KIND=8), PUBLIC, PARAMETER :: earthradius=6.371d6                     ! meters
   REAL(KIND=8), PUBLIC, PARAMETER :: earthsideralday=86164.1                 ! seconds

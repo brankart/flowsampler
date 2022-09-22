@@ -34,15 +34,19 @@ MODULE flowsampler_adv_constraint
 
   ! Private arrays with data fields
   INTEGER, SAVE :: nk, k0, k1 ! size and bounds of block of data
-  REAL(KIND=8), DIMENSION(:,:), PUBLIC, ALLOCATABLE :: u0, v0, zeta0
-  REAL(KIND=8), DIMENSION(:,:), PUBLIC, ALLOCATABLE :: u1, v1, zeta1
   REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: xblock0, xblock1
+  REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: u0, v0, zeta0
+  REAL(KIND=8), DIMENSION(:,:), ALLOCATABLE :: u1, v1, zeta1
+  ! For debug
+  ! REAL(KIND=8), DIMENSION(:,:), PUBLIC, ALLOCATABLE :: u1, v1, zeta1
 
   ! Private arrays with metric/scaling factors
   REAL(KIND=8), DIMENSION(:), SAVE, ALLOCATABLE :: invdxfac, invdyfac
   REAL(KIND=8), DIMENSION(:), SAVE, ALLOCATABLE :: zetafacu, zetafacv
   REAL(KIND=8), DIMENSION(:), SAVE, ALLOCATABLE :: dtfacx, dtfacy
-  REAL(KIND=8), SAVE :: zeta_planetary
+  REAL(KIND=8), DIMENSION(:), SAVE, ALLOCATABLE :: qg_factor
+  REAL(KIND=8), DIMENSION(:), SAVE, ALLOCATABLE :: fcoriolis
+  REAL(KIND=8), SAVE :: zeta_planetary, invdt
 
 #if defined MPI
   ! Definitions for MPI
@@ -73,7 +77,7 @@ MODULE flowsampler_adv_constraint
     INTEGER :: igrp_global
     INTEGER, DIMENSION(:), ALLOCATABLE ::   irankt ! list of processors for current timestep
     INTEGER, DIMENSION(:), ALLOCATABLE ::   igrpt  ! group ID for every timestep
-    REAL(KIND=8) :: coslat, coslatu, dlonratio, dlatratio, gravityoverf
+    REAL(KIND=8) :: sinlat, coslat, coslatu, dlonratio, dlatratio, gravityoverf
     REAL(KIND=8) :: invdx, invdy
 
 #if defined MPI
@@ -156,9 +160,21 @@ MODULE flowsampler_adv_constraint
     IF (allocok.NE.0) STOP 'Allocation error in flowsampler: constraint_init'
     allocate(dtfacy(nlat),stat=allocok)
     IF (allocok.NE.0) STOP 'Allocation error in flowsampler: constraint_init'
+    allocate(fcoriolis(nlat),stat=allocok)
+    IF (allocok.NE.0) STOP 'Allocation error in flowsampler: constraint_init'
+
+    IF (qg_model) THEN
+      allocate(qg_factor(nlat),stat=allocok)
+      IF (allocok.NE.0) STOP 'Allocation error in flowsampler: constraint_init'
+    ENDIF
+
+    ! Compute constant factors
+    zeta_planetary = 2._8 * earthvorticity
+    invdt = 1._8 / dt
 
     ! compute metric/rescaling arrays
     DO j=1,nlat
+      sinlat = sinlatitude(j)
       coslat = coslatitude(j)
       coslatu = coslatitude_u(j)
       CALL distance_ratio(j,dlonratio,dlatratio)
@@ -175,6 +191,12 @@ MODULE flowsampler_adv_constraint
           !zetafac(j) = 0.5_8 * sinlat / ( dlonratio * coslat )
       zetafacu(j) = coslatu * invdy / ( invdx * coslat )
       zetafacv(j) = invdx
+      ! Coriolis factor
+      fcoriolis(j) = zeta_planetary * sinlat
+      ! Factors to obtain additional QG term
+      IF (qg_model) THEN
+        qg_factor(j) = gravityoverf / (rossby_radius*rossby_radius)
+      ENDIF
       ! Factor to obtain displacement from velocity in one time step
       IF (spherical_delta) THEN
         ! WARNING: In this case: dx, dy in radian along a great circle
@@ -187,24 +209,28 @@ MODULE flowsampler_adv_constraint
       ENDIF
     ENDDO
 
-    ! Compute constant factors
-    zeta_planetary = 2._8 * earthvorticity
-
     END SUBROUTINE constraint_init
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 ! --------------------------------------------------------------------
 ! &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    FUNCTION constraint_cost(adt)
+    FUNCTION constraint_cost(adt,cost_dissipation)
 !----------------------------------------------------------------------
 ! ** Purpose : evaluate constraint cost function
 !----------------------------------------------------------------------
     REAL(KIND=8), DIMENSION(:,:), INTENT( in ) :: adt
+    REAL(KIND=8), INTENT( out ), OPTIONAL :: cost_dissipation
     REAL(KIND=8) :: constraint_cost
 
     INTEGER :: i,j,k, kk
     REAL(KIND=8) :: zetau1, zetau2, zetav, dx, dy, lon, lat
-    REAL(KIND=8) :: zeta_past, zeta_future, xi
-    LOGICAL :: inmask, ingrid
+    REAL(KIND=8) :: zeta, zeta_past, zeta_future, xi, u, v
+    LOGICAL :: inmask, ingrid, dissipate
+
+    dissipate = PRESENT(cost_dissipation)
+
+    ! Initialize cost function
+    constraint_cost = 0.
+    IF (dissipate) cost_dissipation = 0.
 
     ! Compute zonal velocity for this block of current time step
     DO k=k0,k1
@@ -214,7 +240,9 @@ MODULE flowsampler_adv_constraint
 
       inmask = j.LT.nlat
       IF (inmask) THEN
-        xblock1(kk) = - ( adt(i,j+1) - adt(i,j) ) * invdyfac(j)
+        u = - ( adt(i,j+1) - adt(i,j) ) * invdyfac(j)
+        IF (dissipate) cost_dissipation = cost_dissipation + u * u * dissip_rate
+        xblock1(kk) = u
       ELSE
         xblock1(kk) = 0.
       ENDIF
@@ -234,7 +262,9 @@ MODULE flowsampler_adv_constraint
 
       inmask = i.LT.nlon
       IF (inmask) THEN
-        xblock1(kk) = ( adt(i+1,j) - adt(i,j) ) * invdxfac(j)
+        v = ( adt(i+1,j) - adt(i,j) ) * invdxfac(j)
+        IF (dissipate) cost_dissipation = cost_dissipation + v * v * dissip_rate
+        xblock1(kk) = v
       ELSE
         xblock1(kk) = 0.
       ENDIF
@@ -246,7 +276,7 @@ MODULE flowsampler_adv_constraint
     CALL rebuild_timestep(xblock0,v0)
     CALL rebuild_timestep(xblock1,v1)
 
-    ! Compute relative vorticity for this block of current time step
+    ! Compute relative and then potential vorticity for this block of current time step
     DO k=k0,k1
       i = 1 + MOD(k,nlon)
       j = 1 + k/nlon
@@ -261,7 +291,20 @@ MODULE flowsampler_adv_constraint
         zetau1 = - u1(i,j) * zetafacu(j)
         zetau2 = u1(i,j-1) * zetafacu(j-1)
         zetav = v1(i,j) - v1(i-1,j)
-        xblock1(kk)= ( zetau1 + zetau2 + zetav ) * zetafacv(j)
+        zeta = ( zetau1 + zetau2 + zetav ) * zetafacv(j)
+
+        !IF (dissipate) cost_dissipation = cost_dissipation + zeta * zeta * dissip_rate
+
+        IF (qg_model) THEN
+          zeta = zeta - adt(i,j) * qg_factor(j)
+        ELSE
+          zeta = zeta + fcoriolis(j)
+          IF (pv_model) THEN
+            zeta = zeta / ( adt(i,j) - adt_ref )
+          ENDIF
+        ENDIF
+
+        xblock1(kk)= zeta
       ELSE
         xblock1(kk) = 0.
       ENDIF
@@ -287,19 +330,19 @@ MODULE flowsampler_adv_constraint
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta0,lon,lat,zeta_past)
         ingrid = zeta_past.NE.spval
-        IF (ingrid) zeta_past = zeta_past + zeta_planetary * SIN(lat*deg2rad)
-        ! advect potential vorticity from past situation
+        ! advect potential vorticity from future situation
         dx = ( u1(i,j) + u1(i,j-1) ) * dtfacx(j)
         dy = ( v1(i,j) + v1(i-1,j) ) * dtfacy(j)
         call get_location(i,j,dx,dy,lon,lat)
         call grid_interp(zeta1,lon,lat,zeta_future)
         ingrid = ingrid .AND. (zeta_future.NE.spval)
-        IF (ingrid) zeta_future = zeta_future + zeta_planetary * SIN(lat*deg2rad)
 
         IF (ingrid) THEN
           xi = zeta_future - zeta_past
           IF (normalize_residual) THEN
             xi = 2._8 * xi / ( ABS(zeta_future) + ABS(zeta_past) )
+          ELSE
+            xi = xi * invdt
           ENDIF
 
           constraint_cost = constraint_cost + xi * xi
@@ -349,6 +392,8 @@ MODULE flowsampler_adv_constraint
       CALL MPI_RECV(xb0,nk,MPI_DOUBLE_PRECISION, &
       &             iproc_prev,tag,mpi_comm_flowsampler,mpi_status_msg,mpi_code)
     ENDIF
+#else
+    xb1 = 0.
 #endif
 
     END SUBROUTINE get_prev_timestep
@@ -364,6 +409,8 @@ MODULE flowsampler_adv_constraint
     CALL MPI_ALLGATHER(xb,   nk,MPI_DOUBLE_PRECISION, &
       &                field,nk,MPI_DOUBLE_PRECISION, &
       &                mpi_comm_timestep,mpi_code)
+#else
+    field = 0.
 #endif
 
     END SUBROUTINE rebuild_timestep
